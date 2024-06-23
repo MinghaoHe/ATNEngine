@@ -22,7 +22,12 @@ System::System(::std::shared_ptr<Canvas> canvas) : ecs::System(), canvas_(canvas
 
   ::std::vector<const char*> layers_list = GetLayersList();
   ::std::vector<const char*> extensions_list = GetExtensionsList();
-  ::vk::InstanceCreateInfo create_info({}, &app_info, static_cast<::std::uint32_t>(layers_list.size()),
+
+  ::vk::InstanceCreateFlagBits instance_flag = {};
+#ifdef __APPLE__
+  instance_flag = ::vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR;
+#endif
+  ::vk::InstanceCreateInfo create_info(instance_flag, &app_info, static_cast<::std::uint32_t>(layers_list.size()),
                                        layers_list.data(), static_cast<::std::uint32_t>(extensions_list.size()),
                                        extensions_list.data());
   instance_ = ::vk::createInstance(create_info);
@@ -47,38 +52,16 @@ System::System(::std::shared_ptr<Canvas> canvas) : ecs::System(), canvas_(canvas
   images_ = logic_device_.getSwapchainImagesKHR(swapchain_);
   image_views_ = CreateImageViews(logic_device_, images_, surface_format_);
 
-  ::vk::ShaderModule vert_shader = CreateShaderModule(logic_device_, "shader/deemo.vert.spv");
-  ::vk::ShaderModule frag_shader = CreateShaderModule(logic_device_, "shader/deemo.frag.spv");
-  ::vk::PipelineShaderStageCreateInfo vert_shader_info({}, ::vk::ShaderStageFlagBits::eVertex, vert_shader, "main");
-  ::vk::PipelineShaderStageCreateInfo frag_shader_info({}, ::vk::ShaderStageFlagBits::eFragment, frag_shader, "main");
-  ::vk::PipelineVertexInputStateCreateInfo vert_input_info({}, 0, nullptr, 0, nullptr);
-  ::vk::PipelineInputAssemblyStateCreateInfo input_assembly_info({}, ::vk::PrimitiveTopology::eTriangleList,
-                                                                 ::vk::False);
-  ::vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(extent_.width), static_cast<float>(extent_.height), 0.0, 1.0f);
-  ::vk::Rect2D scissor(::vk::Offset2D(0, 0), extent_);
-  ::vk::PipelineViewportStateCreateInfo viewport_state_info({}, 1, &viewport, 1, &scissor);
-  ::vk::PipelineRasterizationStateCreateInfo rasterization_state_info(
-      {}, ::vk::False, ::vk::False, ::vk::PolygonMode::eFill, ::vk::CullModeFlagBits::eBack,
-      ::vk::FrontFace::eClockwise, ::vk::False, 0.0f, 0.0f, 0.0f, 1.0f);
-  ::vk::PipelineMultisampleStateCreateInfo multisample_state_info({}, ::vk::SampleCountFlagBits::e1, ::vk::False, 1.0f,
-                                                                  nullptr, ::vk::False, ::vk::False);
-  ::vk::PipelineColorBlendAttachmentState blend_attachment_state(
-      ::vk::False, ::vk::BlendFactor::eOne, ::vk::BlendFactor::eZero, ::vk::BlendOp::eAdd, ::vk::BlendFactor::eOne,
-      ::vk::BlendFactor::eZero, ::vk::BlendOp::eAdd,
-      ::vk::ColorComponentFlagBits::eR | ::vk::ColorComponentFlagBits::eG | ::vk::ColorComponentFlagBits::eB |
-          ::vk::ColorComponentFlagBits::eA);
+  pipeline_layout_ = CreatePipelineLayout(logic_device_);
+  render_pass_ = CreateRenderPass(logic_device_, surface_format_.format);
 
-  ::std::vector<::vk::DynamicState> dynamic_state{::vk::DynamicState::eViewport, ::vk::DynamicState::eLineWidth};
-  ::vk::PipelineDynamicStateCreateInfo dynamic_state_info({}, static_cast<::std::uint32_t>(dynamic_state.size()),
-                                                          dynamic_state.data());
-  ::vk::PipelineLayoutCreateInfo pipeline_layout_info({}, 0, nullptr, 0, nullptr);
-  pipeline_layout_ = logic_device_.createPipelineLayout(pipeline_layout_info);
-
-  logic_device_.destroyShaderModule(vert_shader);
-  logic_device_.destroyShaderModule(frag_shader);
+  pipeline_ = CreatePipeline(logic_device_, "shader/deemo.vert.spv", "shader/deemo.frag.spv", extent_, pipeline_layout_,
+                             render_pass_);
 }
 
 System::~System() {
+  logic_device_.destroyPipeline(pipeline_);
+  logic_device_.destroyRenderPass(render_pass_);
   logic_device_.destroyPipelineLayout(pipeline_layout_);
   std::ranges::for_each(image_views_, [this](const ::vk::ImageView& view) { logic_device_.destroyImageView(view); });
   image_views_.clear();
@@ -126,6 +109,21 @@ void System::PostTick(::std::size_t delta) {}
   if (enable_validation_layers_) {
     extensions_list.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
   }
+
+#ifdef __APPLE__
+  extensions_list.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+  extensions_list.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+#endif
+
+  return extensions_list;
+}
+
+::std::vector<const char*> System::GetDeviceExtensionsList() {
+  ::std::vector<const char*> extensions_list = config::kRequiredDeviceExtensions;
+#ifdef __APPLE__
+  extensions_list.push_back("VK_KHR_portability_subset");
+#endif
+
   return extensions_list;
 }
 
@@ -211,11 +209,11 @@ VKAPI_ATTR ::vk::Bool32 VKAPI_CALL System::DebugCallback(::vk::DebugUtilsMessage
   }
   ::vk::PhysicalDeviceFeatures device_features{};
   ::std::vector<const char*> layers_list = GetLayersList();
+  ::std::vector<const char*> extensions_list = GetDeviceExtensionsList();
   ::vk::DeviceCreateInfo device_create_info({}, static_cast<::std::uint32_t>(queue_create_infos.size()),
                                             queue_create_infos.data(), static_cast<::std::uint32_t>(layers_list.size()),
-                                            layers_list.data(),
-                                            static_cast<::std::uint32_t>(config::kRequiredDeviceExtensions.size()),
-                                            config::kRequiredDeviceExtensions.data(), &device_features);
+                                            layers_list.data(), static_cast<::std::uint32_t>(extensions_list.size()),
+                                            extensions_list.data(), &device_features);
   return physics_device.createDevice(device_create_info);
 }
 
@@ -312,6 +310,75 @@ bool System::IsDeviceExtensionsSupport(const ::vk::PhysicalDevice& physics_devic
   ::vk::ShaderModuleCreateInfo create_info({}, sprv_data.size(),
                                            reinterpret_cast<const ::std::uint32_t*>(sprv_data.data()));
   return device.createShaderModule(create_info);
+}
+
+::vk::PipelineLayout System::CreatePipelineLayout(const ::vk::Device& device) {
+  ::vk::PipelineLayoutCreateInfo pipeline_layout_info({}, 0, nullptr, 0, nullptr);
+  return device.createPipelineLayout(pipeline_layout_info);
+}
+
+::vk::RenderPass System::CreateRenderPass(const ::vk::Device& device, const ::vk::Format& format) {
+  ::vk::AttachmentDescription attachment_description(
+      {}, format, ::vk::SampleCountFlagBits::e1, ::vk::AttachmentLoadOp::eClear, ::vk::AttachmentStoreOp::eStore,
+      ::vk::AttachmentLoadOp::eDontCare, ::vk::AttachmentStoreOp::eDontCare, ::vk::ImageLayout::eUndefined,
+      ::vk::ImageLayout::ePresentSrcKHR);
+  ::vk::AttachmentReference attachment_reference(0, ::vk::ImageLayout::eColorAttachmentOptimal);
+
+  ::vk::SubpassDescription subpass_description({}, ::vk::PipelineBindPoint::eGraphics, 0, nullptr, 1,
+                                               &attachment_reference);
+
+  ::vk::RenderPassCreateInfo render_pass_info({}, 1, &attachment_description, 1, &subpass_description);
+  return device.createRenderPass(render_pass_info);
+}
+
+::vk::Pipeline System::CreatePipeline(const ::vk::Device& device, const ::std::filesystem::path& vert_sprv_path,
+                                      const ::std::filesystem::path& frag_sprv_path, const ::vk::Extent2D& extent,
+                                      const ::vk::PipelineLayout& pipeline_layout,
+                                      const ::vk::RenderPass& render_pass) {
+  ::vk::ShaderModule vert_shader = CreateShaderModule(device, vert_sprv_path);
+  ::vk::ShaderModule frag_shader = CreateShaderModule(device, frag_sprv_path);
+  std::vector<::vk::PipelineShaderStageCreateInfo> shader_stage_infos{
+      ::vk::PipelineShaderStageCreateInfo({}, ::vk::ShaderStageFlagBits::eVertex, vert_shader, "main"),
+      ::vk::PipelineShaderStageCreateInfo({}, ::vk::ShaderStageFlagBits::eFragment, frag_shader, "main")};
+
+  ::vk::PipelineVertexInputStateCreateInfo vert_input_info({}, 0, nullptr, 0, nullptr);
+  ::vk::PipelineInputAssemblyStateCreateInfo input_assembly_info({}, ::vk::PrimitiveTopology::eTriangleList,
+                                                                 ::vk::False);
+  ::vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(extent.width), static_cast<float>(extent.height), 0.0, 1.0f);
+  ::vk::Rect2D scissor(::vk::Offset2D(0, 0), extent);
+  ::vk::PipelineViewportStateCreateInfo viewport_state_info({}, 1, &viewport, 1, &scissor);
+  ::vk::PipelineRasterizationStateCreateInfo rasterization_state_info(
+      {}, ::vk::False, ::vk::False, ::vk::PolygonMode::eFill, ::vk::CullModeFlagBits::eBack,
+      ::vk::FrontFace::eClockwise, ::vk::False, 0.0f, 0.0f, 0.0f, 1.0f);
+  ::vk::PipelineMultisampleStateCreateInfo multisample_state_info({}, ::vk::SampleCountFlagBits::e1, ::vk::False, 1.0f,
+                                                                  nullptr, ::vk::False, ::vk::False);
+  ::vk::PipelineColorBlendAttachmentState blend_attachment_state(
+      ::vk::False, ::vk::BlendFactor::eOne, ::vk::BlendFactor::eZero, ::vk::BlendOp::eAdd, ::vk::BlendFactor::eOne,
+      ::vk::BlendFactor::eZero, ::vk::BlendOp::eAdd,
+      ::vk::ColorComponentFlagBits::eR | ::vk::ColorComponentFlagBits::eG | ::vk::ColorComponentFlagBits::eB |
+          ::vk::ColorComponentFlagBits::eA);
+  ::vk::PipelineColorBlendStateCreateInfo blend_state_info({}, ::vk::False, ::vk::LogicOp::eCopy, 1,
+                                                           &blend_attachment_state, {0.0f, 0.0f, 0.0f, 0.0f});
+
+  ::std::vector<::vk::DynamicState> dynamic_state{::vk::DynamicState::eViewport, ::vk::DynamicState::eLineWidth};
+  ::vk::PipelineDynamicStateCreateInfo dynamic_state_info({}, static_cast<::std::uint32_t>(dynamic_state.size()),
+                                                          dynamic_state.data());
+
+  ::vk::GraphicsPipelineCreateInfo pipeline_info({}, shader_stage_infos, &vert_input_info, &input_assembly_info,
+                                                 nullptr, &viewport_state_info, &rasterization_state_info,
+                                                 &multisample_state_info, nullptr, &blend_state_info,
+                                                 &dynamic_state_info, pipeline_layout, render_pass);
+
+  ::vk::Result result;
+  ::vk::Pipeline pipeline;
+  ::std::tie(result, pipeline) = device.createGraphicsPipeline({}, pipeline_info);
+  device.destroyShaderModule(vert_shader);
+  device.destroyShaderModule(frag_shader);
+  if (result != ::vk::Result::eSuccess) {
+    ::std::cerr << "createGraphicsPipeline fail, result code" << static_cast<::std::uint32_t>(result) << ::std::endl;
+  }
+
+  return pipeline;
 }
 
 }  // namespace atn::engine::render

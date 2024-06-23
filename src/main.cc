@@ -9,15 +9,9 @@
 #include "atn/engine.h"
 
 int main(int argc, char* argv[]) {
-  try {
-    ::atn::Engine engine(argc, argv);
-    engine.Initialize();
-    engine.CreateWorld();
+  ::atn::Engine engine(argc, argv);
+  engine.Initialize();
+  engine.CreateWorld();
 
-    return engine.Exec();
-  } catch (::std::exception &e) {
-    ::std::cerr << "error: " << e.what();
-  }
-
-  return 0;
+  return engine.Exec();
 }

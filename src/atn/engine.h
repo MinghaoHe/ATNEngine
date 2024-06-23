@@ -48,7 +48,7 @@ class Engine final {
   ::std::shared_ptr<world::TickLock> tick_lock_;
   ::std::shared_ptr<world::PrimePlayer> primer_;
 
-  ::std::unordered_map<ecs::Category, std::shared_ptr<ecs::System>> systems_;
+  ::std::unordered_map<ecs::Category, ::std::shared_ptr<ecs::System>> systems_;
 };
 
 }  // namespace atn

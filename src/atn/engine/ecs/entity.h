@@ -28,11 +28,11 @@ struct EntityCreateParam {
 
 struct EntitySeed {
   bool existence{true};
-  uintptr_t id{};
-  std::string tag;
-  glm::mat4 model{1.0f};
+  ::std::uintptr_t id{};
+  ::std::string tag;
+  ::glm::mat4 model{1.0f};
 
-  std::shared_mutex mutex;
+  ::std::shared_mutex mutex;
 };
 
 class Entity final {
@@ -44,7 +44,7 @@ class Entity final {
   EntitySeed &Seed();
 
   void Attach(Category category, ::std::shared_ptr<Component> component);
-  std::optional<std::shared_ptr<Component>> Appear(Category category) const;
+  ::std::optional<::std::shared_ptr<Component>> Appear(Category category) const;
 
  private:
   EntitySeed seed_;

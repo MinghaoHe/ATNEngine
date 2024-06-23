@@ -30,6 +30,7 @@ class System : public ecs::System {
  private:
   ::std::vector<const char *> GetLayersList();
   ::std::vector<const char *> GetExtensionsList();
+  ::std::vector<const char *> GetDeviceExtensionsList();
   void CreateDebugMessenger();
   void DestroyDebugMessenger();
 
@@ -52,6 +53,11 @@ class System : public ecs::System {
                                                   const ::vk::SurfaceFormatKHR &surface_format);
 
   ::vk::ShaderModule CreateShaderModule(const ::vk::Device &device, const ::std::filesystem::path &sprv_path);
+  ::vk::PipelineLayout CreatePipelineLayout(const ::vk::Device &device);
+  ::vk::RenderPass CreateRenderPass(const ::vk::Device &device, const ::vk::Format &format);
+  ::vk::Pipeline CreatePipeline(const ::vk::Device &device, const ::std::filesystem::path &vert_sprv_path,
+                                const ::std::filesystem::path &frag_sprv_path, const ::vk::Extent2D &extent,
+                                const ::vk::PipelineLayout &pipeline_layout, const ::vk::RenderPass &render_pass);
 
  private:
   static VKAPI_ATTR ::vk::Bool32 VKAPI_CALL DebugCallback(::vk::DebugUtilsMessageSeverityFlagBitsEXT message_severity,
@@ -75,6 +81,8 @@ class System : public ecs::System {
   ::std::vector<::vk::ImageView> image_views_;
 
   ::vk::PipelineLayout pipeline_layout_;
+  ::vk::RenderPass render_pass_;
+  ::vk::Pipeline pipeline_;
 
   ::vk::DispatchLoaderDynamic dispatcher_;
   ::vk::DebugUtilsMessengerEXT messenger_;
