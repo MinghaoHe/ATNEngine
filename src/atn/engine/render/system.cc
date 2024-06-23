@@ -22,7 +22,12 @@ System::System(::std::shared_ptr<Canvas> canvas) : ecs::System(), canvas_(canvas
 
   ::std::vector<const char*> layers_list = GetLayersList();
   ::std::vector<const char*> extensions_list = GetExtensionsList();
-  ::vk::InstanceCreateInfo create_info({}, &app_info, static_cast<::std::uint32_t>(layers_list.size()),
+
+  ::vk::InstanceCreateFlagBits instance_flag = {};
+#ifdef __APPLE__
+  instance_flag = ::vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR;
+#endif
+  ::vk::InstanceCreateInfo create_info(instance_flag, &app_info, static_cast<::std::uint32_t>(layers_list.size()),
                                        layers_list.data(), static_cast<::std::uint32_t>(extensions_list.size()),
                                        extensions_list.data());
   instance_ = ::vk::createInstance(create_info);
@@ -126,6 +131,21 @@ void System::PostTick(::std::size_t delta) {}
   if (enable_validation_layers_) {
     extensions_list.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
   }
+
+#ifdef __APPLE__
+  extensions_list.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+  extensions_list.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+#endif
+
+  return extensions_list;
+}
+
+::std::vector<const char*> System::GetDeviceExtensionsList() {
+  ::std::vector<const char*> extensions_list = config::kRequiredDeviceExtensions;
+#ifdef __APPLE__
+  extensions_list.push_back("VK_KHR_portability_subset");
+#endif
+
   return extensions_list;
 }
 
@@ -211,11 +231,11 @@ VKAPI_ATTR ::vk::Bool32 VKAPI_CALL System::DebugCallback(::vk::DebugUtilsMessage
   }
   ::vk::PhysicalDeviceFeatures device_features{};
   ::std::vector<const char*> layers_list = GetLayersList();
+  ::std::vector<const char*> extensions_list = GetDeviceExtensionsList();
   ::vk::DeviceCreateInfo device_create_info({}, static_cast<::std::uint32_t>(queue_create_infos.size()),
                                             queue_create_infos.data(), static_cast<::std::uint32_t>(layers_list.size()),
-                                            layers_list.data(),
-                                            static_cast<::std::uint32_t>(config::kRequiredDeviceExtensions.size()),
-                                            config::kRequiredDeviceExtensions.data(), &device_features);
+                                            layers_list.data(), static_cast<::std::uint32_t>(extensions_list.size()),
+                                            extensions_list.data(), &device_features);
   return physics_device.createDevice(device_create_info);
 }
 

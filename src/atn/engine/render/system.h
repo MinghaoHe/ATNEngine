@@ -30,6 +30,7 @@ class System : public ecs::System {
  private:
   ::std::vector<const char *> GetLayersList();
   ::std::vector<const char *> GetExtensionsList();
+  ::std::vector<const char *> GetDeviceExtensionsList();
   void CreateDebugMessenger();
   void DestroyDebugMessenger();
 
